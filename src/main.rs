@@ -9,7 +9,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Startup, image_create)
+        .add_systems(Startup, create_image)
         .run();
 }
 
@@ -17,12 +17,13 @@ fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn image_create() {
+fn create_image() {
     let auth = Auth::from_env().unwrap();
     let openai = OpenAI::new(auth, "https://api.openai.com/v1/");
 
     let body = ImagesBody {
-        prompt: "Draw a cartoonish style 16 bit female wizard".to_string(),
+        prompt: "Draw a cartoonish style 16 bit female wizard. And make sure that the background is pure white"
+            .to_string(),
         n: Some(1),
         size: Some("256x256".to_string()),
         response_format: None,
@@ -45,18 +46,28 @@ fn download_and_save_image(url: &str, file_name: &str) -> Result<()> {
     Ok(())
 }
 
-// NEDEN ÇALIŞMIYORSUN !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// ARKA PLAN TAMAMEN BEYAZ OLMADIĞI İÇİN ÇALIŞMIYOR
 fn convert_to_transparent(path: &str) {
-    let img = image::open(path).unwrap();
-    let mut file = File::create(format!(r#"assets/image1.png"#)).unwrap();
-    copy(&mut img.as_bytes(), &mut file).unwrap();
-
-    let mut img = img.to_rgba32f();
-    for p in img.pixels_mut() {
-        if p[0] == 255.0 && p[1] == 255.0 && p[2] == 255.0 {
-            p[3] = 0.0;
+    let mut image = image::open(path).unwrap();
+    let (width, height) = image.dimensions();
+    for a in 200..=255 {
+        for x in 0..width {
+            for y in 0..height {
+                let pixel = image.get_pixel(x, y);
+                if pixel[0] == a && pixel[1] == a && pixel[2] == a {
+                    image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                }
+            }
         }
     }
+    image.save(r#"assets/image1.png"#).unwrap();
+}
 
-    std::io::copy(&mut img.as_bytes(), &mut file).unwrap();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_convert_to_transparent() {
+        convert_to_transparent(r#"assets/image.png"#);
+    }
 }
