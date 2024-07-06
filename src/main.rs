@@ -1,20 +1,77 @@
 use anyhow::Result;
-use bevy::prelude::*;
+use bevy::{
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    prelude::*,
+    utils::hashbrown::HashSet,
+    window::close_on_esc,
+};
+use bevy_pancam::{PanCam, PanCamPlugin};
 use image::*;
+use noise::{NoiseFn, Perlin, Seedable};
 use openai_api_rust::images::*;
 use openai_api_rust::*;
+use rand::Rng;
 use std::{fs::File, io::copy};
+
+const SPRITE_SHEET_PATH: &str = "image1.png";
+const SPRITE_SCALE_FACTOR: usize = 5;
+
+const GRID_COLS: usize = 200;
+const GRID_ROWS: usize = 100;
+
+const NOISE_SCALE: f64 = 0.07;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins(PanCamPlugin)
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
+        .add_plugins(LogDiagnosticsPlugin::default())
         .add_systems(Startup, setup)
         .add_systems(Startup, create_image)
+        .add_systems(Update, close_on_esc)
         .run();
 }
 
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn(Camera2dBundle::default())
+        .insert(PanCam::default());
+
+    let mut rng = rand::thread_rng();
+    let perlin = Perlin::new(rng.gen());
+    let mut tiles = HashSet::new();
+    for x in 0..GRID_COLS {
+        for y in 0..GRID_ROWS {
+            let val = perlin.get([x as f64 * NOISE_SCALE, y as f64 * NOISE_SCALE]);
+            if val > 0.2 {
+                continue;
+            }
+            tiles.insert((x, y));
+        }
+    }
+
+    for (x, y) in tiles.iter() {
+        let (x, y) = grid_to_world(*x as f32, *y as f32);
+        commands.spawn(SpriteSheetBundle {
+            sprite: Sprite::default(),
+            transform: Transform::from_scale(Vec3::splat(SPRITE_SCALE_FACTOR as f32))
+                .with_translation(Vec3 {
+                    x: (x),
+                    y: (y),
+                    z: (0.0),
+                }),
+            texture: asset_server.load(SPRITE_SHEET_PATH),
+            ..default()
+        });
+    }
+}
+
+fn grid_to_world(x: f32, y: f32) -> (f32, f32) {
+    (
+        x * TILE_W as f32 * SPRITE_SCALE_FACTOR as f32,
+        y * TILE_H as f32 * SPRITE_SCALE_FACTOR as f32,
+    )
 }
 
 fn create_image() {
@@ -25,7 +82,7 @@ fn create_image() {
         prompt: "Draw a cartoonish style 16 bit female wizard. And make sure that the background is pure white"
             .to_string(),
         n: Some(1),
-        size: Some("256x256".to_string()),
+        size: Some("16x16".to_string()),
         response_format: None,
         user: None,
     };
@@ -46,16 +103,19 @@ fn download_and_save_image(url: &str, file_name: &str) -> Result<()> {
     Ok(())
 }
 
-// ARKA PLAN TAMAMEN BEYAZ OLMADIĞI İÇİN ÇALIŞMIYOR
 fn convert_to_transparent(path: &str) {
     let mut image = image::open(path).unwrap();
     let (width, height) = image.dimensions();
-    for a in 200..=255 {
-        for x in 0..width {
-            for y in 0..height {
-                let pixel = image.get_pixel(x, y);
-                if pixel[0] == a && pixel[1] == a && pixel[2] == a {
-                    image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+    for a in 230..=255 {
+        for b in 230..=255 {
+            for c in 230..=255 {
+                for x in 0..width {
+                    for y in 0..height {
+                        let pixel = image.get_pixel(x, y);
+                        if pixel[0] == a && pixel[1] == b && pixel[2] == c {
+                            image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                        }
+                    }
                 }
             }
         }
