@@ -14,10 +14,13 @@ use rand::Rng;
 use std::{fs::File, io::copy};
 
 const SPRITE_SHEET_PATH: &str = "image1.png";
-const SPRITE_SCALE_FACTOR: usize = 5;
+const SPRITE_SCALE_FACTOR: usize = 1;
 
 const GRID_COLS: usize = 200;
 const GRID_ROWS: usize = 100;
+
+const TILE_W: usize = 256;
+const TILE_H: usize = 256;
 
 const NOISE_SCALE: f64 = 0.07;
 
@@ -28,7 +31,7 @@ fn main() {
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(LogDiagnosticsPlugin::default())
         .add_systems(Startup, setup)
-        .add_systems(Startup, create_image)
+        //        .add_systems(Startup, create_image)
         .add_systems(Update, close_on_esc)
         .run();
 }
@@ -104,7 +107,8 @@ fn download_and_save_image(url: &str, file_name: &str) -> Result<()> {
 }
 
 fn convert_to_transparent(path: &str) {
-    let mut image = image::open(path).unwrap();
+    let image = image::open(path).unwrap();
+    let mut rgbaimage = image.to_rgba8();
     let (width, height) = image.dimensions();
     for a in 230..=255 {
         for b in 230..=255 {
@@ -113,14 +117,14 @@ fn convert_to_transparent(path: &str) {
                     for y in 0..height {
                         let pixel = image.get_pixel(x, y);
                         if pixel[0] == a && pixel[1] == b && pixel[2] == c {
-                            image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                            rgbaimage.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
                         }
                     }
                 }
             }
         }
     }
-    image.save(r#"assets/image1.png"#).unwrap();
+    rgbaimage.save(r#"assets/image1.png"#).unwrap();
 }
 
 #[cfg(test)]
