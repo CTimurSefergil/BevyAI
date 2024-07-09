@@ -13,11 +13,13 @@ use openai_api_rust::*;
 use rand::Rng;
 use std::{fs::File, io::copy};
 
-const SPRITE_SHEET_PATH: &str = "image1.png";
+const GRASS_PATH: &str = "grass1.png";
+const WATER_PATH: &str = "water1.png";
 const SPRITE_SCALE_FACTOR: usize = 1;
 
 const GRID_COLS: usize = 200;
 const GRID_ROWS: usize = 100;
+const BG_COLOR: (u8, u8, u8) = (0, 187, 163);
 
 const TILE_W: usize = 256;
 const TILE_H: usize = 256;
@@ -28,33 +30,40 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(PanCamPlugin)
+        .insert_resource(ClearColor(Color::rgba_u8(
+            BG_COLOR.0, BG_COLOR.1, BG_COLOR.2, 255,
+        )))
         .add_plugins(FrameTimeDiagnosticsPlugin::default())
         .add_plugins(LogDiagnosticsPlugin::default())
         .add_systems(Startup, setup)
-        //        .add_systems(Startup, create_image)
         .add_systems(Update, close_on_esc)
         .run();
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    create_image("Create an izometric grass texture", "grass");
+    create_image("Create an izometric water texture", "water");
+
     commands
         .spawn(Camera2dBundle::default())
         .insert(PanCam::default());
 
     let mut rng = rand::thread_rng();
     let perlin = Perlin::new(rng.gen());
-    let mut tiles = HashSet::new();
+    let mut grass_tiles = HashSet::new();
+    let mut water_tiles = HashSet::new();
     for x in 0..GRID_COLS {
         for y in 0..GRID_ROWS {
             let val = perlin.get([x as f64 * NOISE_SCALE, y as f64 * NOISE_SCALE]);
             if val > 0.2 {
+                water_tiles.insert((x, y));
                 continue;
             }
-            tiles.insert((x, y));
+            grass_tiles.insert((x, y));
         }
     }
 
-    for (x, y) in tiles.iter() {
+    for (x, y) in grass_tiles.iter() {
         let (x, y) = grid_to_world(*x as f32, *y as f32);
         commands.spawn(SpriteSheetBundle {
             sprite: Sprite::default(),
@@ -64,7 +73,22 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     y: (y),
                     z: (0.0),
                 }),
-            texture: asset_server.load(SPRITE_SHEET_PATH),
+            texture: asset_server.load(GRASS_PATH),
+            ..default()
+        });
+    }
+
+    for (x, y) in water_tiles.iter() {
+        let (x, y) = grid_to_world(*x as f32, *y as f32);
+        commands.spawn(SpriteSheetBundle {
+            sprite: Sprite::default(),
+            transform: Transform::from_scale(Vec3::splat(SPRITE_SCALE_FACTOR as f32))
+                .with_translation(Vec3 {
+                    x: (x),
+                    y: (y),
+                    z: (0.0),
+                }),
+            texture: asset_server.load(WATER_PATH),
             ..default()
         });
     }
@@ -77,15 +101,14 @@ fn grid_to_world(x: f32, y: f32) -> (f32, f32) {
     )
 }
 
-fn create_image() {
+fn create_image(prompt: &str, path_name: &str) {
     let auth = Auth::from_env().unwrap();
     let openai = OpenAI::new(auth, "https://api.openai.com/v1/");
 
     let body = ImagesBody {
-        prompt: "Draw a cartoonish style 16 bit female wizard. And make sure that the background is pure white"
-            .to_string(),
+        prompt: prompt.to_string(),
         n: Some(1),
-        size: Some("16x16".to_string()),
+        size: Some("256x256".to_string()),
         response_format: None,
         user: None,
     };
@@ -93,12 +116,18 @@ fn create_image() {
     let images = rs.unwrap().data.unwrap();
     let image = images.get(0).unwrap();
     if image.url.contains("http") {
-        let _ = download_and_save_image(&image.url as &str, r#"assets/image.png"#);
-        convert_to_transparent(r#"assets/image.png"#);
+        let _ = download_and_save_image(
+            &image.url as &str,
+            r#"assets/"#.to_owned() + path_name + ".png",
+        );
+        convert_to_transparent(
+            (r#"assets/"#.to_owned() + path_name + ".png").as_str(),
+            (r#"assets/"#.to_owned() + path_name).as_str(),
+        );
     }
 }
 
-fn download_and_save_image(url: &str, file_name: &str) -> Result<()> {
+fn download_and_save_image(url: &str, file_name: String) -> Result<()> {
     let mut response = reqwest::blocking::get(url)?;
     let mut file = File::create(file_name)?;
     copy(&mut response, &mut file)?;
@@ -106,7 +135,8 @@ fn download_and_save_image(url: &str, file_name: &str) -> Result<()> {
     Ok(())
 }
 
-fn convert_to_transparent(path: &str) {
+fn convert_to_transparent(path: &str, path1: &str) {
+    let save_path = path1.to_owned() + "1" + ".png";
     let image = image::open(path).unwrap();
     let mut rgbaimage = image.to_rgba8();
     let (width, height) = image.dimensions();
@@ -124,7 +154,7 @@ fn convert_to_transparent(path: &str) {
             }
         }
     }
-    rgbaimage.save(r#"assets/image1.png"#).unwrap();
+    rgbaimage.save(save_path).unwrap();
 }
 
 #[cfg(test)]
@@ -132,6 +162,6 @@ mod tests {
     use super::*;
     #[test]
     fn test_convert_to_transparent() {
-        convert_to_transparent(r#"assets/image.png"#);
+        convert_to_transparent("image.png", "image");
     }
 }
